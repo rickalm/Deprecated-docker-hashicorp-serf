@@ -1,29 +1,94 @@
-#! /bin/sh
+#! /bin/bash
+
+join_list=""
+log_dir=/var/log/serf
+docker_sock=/var/run/docker.sock
+
+mkdir -p ${log_dir} 2>/dev/null
+chown serf ${log_dir} 2>/dev/null
+rm ${log_dir}/serf.join 2>/dev/null
 
 # Start Serf
-join_list=""
-bind_port=${BIND_PORT:-7946}
-
-if [ -n "${JOIN_LIST}" ]; then
-  for host in $(echo ${JOIN_LIST} | tr ',' ' '); do
-    join_list="${join_list} -join ${host}" 
-  done
+if [ -n "${DEBUG}" ]; then
+  exec 1>&-
+  exec 2>&-
+  exec 1>>${log_dir}/serf.stdout
+  exec 2>>${log_dir}/serf.stderr
+  set -x
 fi
 
-if [ -n "${PORT_SCAN}" ]; then
-  range=$(ip addr show dev eth0 | grep "inet " | awk '{print $2}')
-  for host in $(nmap --open --send-ip --unprivileged -n -p${bind_port} -oG - ${range} \
-      | grep "^Host" | grep ${bind_port} | awk '{print $2}' ) ; do
-    join_list="${join_list} -join ${host}" 
+node_name=${NODE_NAME:-$(hostname -s)}
+
+rpc_port=${RPC_PORT:-7373}
+rpc_ip=${RPC_IP:-127.0.0.1}
+
+bind_port=${BIND_PORT:-7946}
+bind_ip=${BIND_IP:-0.0.0.0}
+
+advertise_port=${ADVERTISE_PORT:-${bind_port}}
+advertise_ip=${ADVERTISE_IP:-$(hostname -i | awk '{print $1}')}
+
+# If we are in BRIDGE mode, try to translate port
+#
+if [ -z "$(ip -o link dev docker0 2>/dev/null)" ]; then 
+
+  # If the docker socket exposed to us (useful for bridge mode) then try to discover the external port this container is listening on
+  #
+  if [ -S ${docker_sock} ]; then
+    json=$( echo -e "GET /containers/$(hostname -s)/json HTTP/1.1\\n\\n" | socat unix-connect:${docker_sock} STDIO | grep '^[\[{]' )
+
+    if [ -n "${json}" ]; then
+      echo ${json} | jq . >>${log_dir}/serf.log
+      advertise_port=$( echo ${json} | jq .NetworkSettings.Ports[\"${bind_port}/tcp\"][].HostPort | sed -e 's/^"//' -e 's/"$//' )
+    fi
+  fi
+
+# Otherwise, we are in HOST mode, see if we should discover our peers
+#
+else
+
+  # If PORT_SCAN is enabled, use nmap to find our peers within our network
+  # keep expanding the netmask till we find a peer that might want to talk to us
+  # netmask cannot be smaller than 16
+  #
+  if [ -n "${PORT_SCAN}" ]; then
+    mask_limit=${PORT_SCAN_MASK:-16}
+    if [ ${mask_limit} -lt 16 ]; then mask_limit=16; fi
+
+    device=$(ip -o route get 8.8.8.8 | sed -e 's/^.*dev //' -e 's/ .*//')
+    base=$(ip addr show dev ${device} | grep "inet " | awk '{print $2}' | cut -d/ -f1)
+    mask=$(ip addr show dev ${device} | grep "inet " | awk '{print $2}' | cut -d/ -f2)
+
+    while [ -z "${join_list}" -a ${mask} -ge ${mask_limit} ]; do
+      for host in $( nmap --open --send-ip --unprivileged -n -p${bind_port} -oG - ${range} \
+	| grep "^Host" | grep ${bind_port} | awk '{print $2}' )
+      do
+	join_list="${join_list} -join=${host}" 
+      done
+      mask=$((mask-2))
+    done
+  fi
+
+fi
+
+# If a JOIN_LIST was specified then add those nodes to the agent run command
+#
+if [ -n "${JOIN_LIST}" ]; then
+  for host in $(echo ${JOIN_LIST} | tr ',' ' '); do
+    join_list="${join_list} -join=${host}" 
   done
 fi
 
 exec /sbin/setuser serf /usr/bin/serf agent \
   ${join_list} \
-  -node "${NODE_NAME:-$(hostname -s)}" \
-  -bind "0.0.0.0:${bind_port}" \
-  -advertise "${HOST_IP:-$(hostname -i | awk '{print $1}')}:${bind_port}" \
-  -event-handler /etc/service/serf/dispatcher.sh \
+  -node="${node_name}" \
+  -rpc-addr="127.0.0.1:${rpc_port}" \
+  -rpc-addr="${rpc_ip}:${rpc_port}" \
+  -bind="${bind_ip}:${bind_port}" \
+  -advertise="${advertise_ip}:${advertise_port}" \
+  -event-handler=/etc/service/serf/dispatcher.sh \
+  -snapshot=${log_dir}/snapshot.dat \
+  -tags-file=${log_dir}/tags.dat \
   -log-level=debug \
-  >> /var/log/serf.log 2>&1
+  >>${log_dir}/serf.log 2>&1
 

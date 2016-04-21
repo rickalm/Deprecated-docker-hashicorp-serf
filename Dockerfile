@@ -1,17 +1,19 @@
-FROM phusion/baseimage:0.9.15
+FROM phusion/baseimage:latest
 MAINTAINER rickalm@aol.com
 
 # Environmental variables
 ENV DEBIAN_FRONTEND noninteractive
 
 # Install dependencies
+#
 RUN apt-get update -qq \
-	&& apt-get install unzip nmap -y \
+	&& apt-get upgrade -y \
+	&& apt-get install unzip nmap socat jq -y \
 	&& apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 # Disable sshd, cron and syslog-ng service
 #
-RUN rm -rf /etc/service/sshd /etc/service/syslog-ng /etc/service/cron
+RUN rm -rf /etc/service/sshd /etc/service/syslog-ng /etc/service/cron /etc/service/syslog-forwarder
 
 # Install Serf
 #
@@ -32,4 +34,5 @@ ADD etc /etc
 
 # Leverage the baseimage-docker init system
 #
+VOLUME /var/log/serf
 CMD ["/sbin/my_init", "--quiet"]
