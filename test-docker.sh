@@ -3,10 +3,12 @@ docker_ip=$(ip -o addr show docker0 | grep "inet " | sed -e 's/^.*inet //' | cut
 docker rm -f serf 2>/dev/null
 docker rm -f serf-bridge 2>/dev/null
 
-/bin/false && docker run -d \
+/bin/true && docker run -d \
   --net=host \
   --name=serf \
+  -e "DEBUG=yes" \
   -e "PORT_SCAN=yes" \
+  -e "PORT_SCAN_MASK=22" \
   -e "RRPC_IP=${docker_ip}" \
   rickalm/hashicorp-serf \
   && docker exec -it serf /bin/bash

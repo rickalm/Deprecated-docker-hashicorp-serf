@@ -2,13 +2,22 @@ FROM phusion/baseimage:latest
 MAINTAINER rickalm@aol.com
 
 # Environmental variables
+#
 ENV DEBIAN_FRONTEND noninteractive
+
+# Leverage the baseimage-docker init system
+#
+CMD ["/sbin/my_init", "--quiet"]
+
+# Tell docker to put volatile directories onto a seperate volume(s)
+#
+VOLUME /var/log
 
 # Install dependencies
 #
 RUN apt-get update -qq \
 	&& apt-get upgrade -y \
-	&& apt-get install unzip nmap socat jq -y \
+	&& apt-get install unzip nmap socat jq traceroute -y \
 	&& apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 # Disable sshd, cron and syslog-ng service
@@ -29,10 +38,3 @@ RUN cd /tmp \
 # Setup start scripts for services
 #
 ADD etc /etc
-
-# Cleanup 
-
-# Leverage the baseimage-docker init system
-#
-VOLUME /var/log/serf
-CMD ["/sbin/my_init", "--quiet"]
