@@ -23,11 +23,11 @@ Supported Env values are
 
 Supported Handlers
 
-- member-join			One or more members have joined the cluster.
-- member-leave			One or more members have gracefully left the cluster.
-- member-failed			One or more members have failed, meaning that they didn't properly respond to ping requests.
-- member-update			One or more members have updated, likely to update the associated tags
-- member-reap			Serf has removed one or more members from it's list of members. This means a failed node exceeded the reconnect_timeout, or a left node reached the tombstone_timeout.
+- member-join - One or more members have joined the cluster.
+- member-leave - One or more members have gracefully left the cluster.
+- member-failed - One or more members have failed, meaning that they didn't properly respond to ping requests.
+- member-update - One or more members have updated, likely to update the associated tags
+- member-reap - Serf has removed one or more members from it's list of members. This means a failed node exceeded the reconnect_timeout, or a left node reached the tombstone_timeout.
 
-- query-* 			called when a query is called
-- event-* 			called when a event is dispatched
+- query-* - called when a query is called
+- event-* - called when a event is dispatched
