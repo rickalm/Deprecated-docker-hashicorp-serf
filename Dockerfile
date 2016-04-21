@@ -6,7 +6,7 @@ ENV DEBIAN_FRONTEND noninteractive
 
 # Install dependencies
 RUN apt-get update -qq \
-	&& apt-get install unzip -y \
+	&& apt-get install unzip nmap -y \
 	&& apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 # Disable sshd, cron and syslog-ng service

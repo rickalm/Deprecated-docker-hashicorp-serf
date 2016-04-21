@@ -9,6 +9,13 @@ if [ -n "${JOIN_LIST}" ]; then
   done
 fi
 
+if [ -n "${PORT_SCAN}" ]; then
+  range=$(ip addr show dev eth0 | grep "inet " | awk '{print $2}')
+  for host in $(nmap --open --send-ip --unprivileged -n -p7946 -oG - ${range} | grep "^Host" | grep 7946 | awk '{print $2}'); do
+    join_list="${join_list} --join ${host}" 
+  done
+fi
+
 exec /sbin/setuser serf /usr/bin/serf agent \
   ${join_list} \
   -node "${NODE_NAME:-$(hostname -s)}" \
@@ -17,3 +24,4 @@ exec /sbin/setuser serf /usr/bin/serf agent \
   -event-handler /etc/service/serf/dispatcher.sh \
   -log-level=debug \
   >> /var/log/serf.log 2>&1
+
