@@ -17,7 +17,7 @@ docker run -d \
 	rickalm/hashicorp-serf
 ```
 
-* For running inside a BRIDGE'ed container (mainly when this container is used as your FROM in your own docker project)
+For running inside a BRIDGE'ed container (mainly when this container is used as your FROM in your own docker project)
 
 ```
 docker run -d \
@@ -29,7 +29,7 @@ docker run -d \
 	rickalm/docker-hashicorp-serf
 ```
 
-* Supported Env values are
+Supported Env values are
 
 ```
 - NODE_NAME	    	alternative name to use for the node [ default $(hostname -s) ]
@@ -50,17 +50,21 @@ docker run -d \
 - JOIN_LIST    		a comma deliminated list of Serf nodes to join host1,host2:port,host3:port
 ```
 
-* Mapping the docker NATted port
+Mapping the docker NATted port
 
 If the docker socket is made availible to the container, then it will use that to determine the port mappings in use for the Gossip Protocol. Docker does not yet have the ability to auto-map ports of both protocols (tcp/udp) automatically to the same ephemeral port on the host so you must also specify the port mappings yourself
 
-* Supported Handlers
+Supported Handlers
 
-- member-join - One or more members have joined the cluster.
-- member-leave - One or more members have gracefully left the cluster.
-- member-failed - One or more members have failed, meaning that they didn't properly respond to ping requests.
-- member-update - One or more members have updated, likely to update the associated tags
-- member-reap - Serf has removed one or more members from it's list of members. This means a failed node exceeded the reconnect_timeout, or a left node reached the tombstone_timeout.
+```
+- member-join     One or more members have joined the cluster.
+- member-leave    One or more members have gracefully left the cluster.
+- member-failed   One or more members have failed, meaning that they didn't properly respond to ping requests.
+- member-update   One or more members have updated, likely to update the associated tags
+- member-reap     Serf has removed one or more members from it's list of members.
+                  This means a failed node exceeded the reconnect_timeout, or a left node reached the tombstone_timeout.
 
-- query-* - called when a query is called
-- event-* - called when a event is dispatched
+- query-*         called when a query is called
+- event-*         called when a event is dispatched
+```
+
