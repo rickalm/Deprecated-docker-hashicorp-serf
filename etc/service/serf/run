@@ -38,11 +38,28 @@ if [ -z "$(ip -o link show dev docker0 2>/dev/null)" ]; then
   # If the docker socket exposed to us (useful for bridge mode) then try to discover the external port this container is listening on
   #
   if [ -S ${docker_sock} ]; then
-    json=$( echo -e "GET /containers/$(hostname -s)/json HTTP/1.1\\n\\n" | socat unix-connect:${docker_sock} STDIO | grep '^[\[{]' )
 
-    if [ -n "${json}" ]; then
+    # Use docker container info to find out the mapped port for the bind_port
+    #
+    json=$( echo -e "GET /containers/$(hostname -s)/json HTTP/1.1\\n\\n" | socat unix-connect:${docker_sock} STDIO | grep '^[\[{]' )
+    if [ -z "${ADVERTISE_PORT}" -a -n "${json}" ]; then
       echo ${json} | jq . >>${log_dir}/serf.log
-      advertise_port=$( echo ${json} | jq .NetworkSettings.Ports[\"${bind_port}/tcp\"][].HostPort | sed -e 's/^"//' -e 's/"$//' )
+      answer=$( echo ${json} | jq .NetworkSettings.Ports[\"${bind_port}/tcp\"][].HostPort | sed -e 's/^"//' -e 's/"$//' )
+      advertise_port=${answer:-${advertise_port}}
+    fi
+
+    # Use docker info to figure out the docker host's name and then use ping to transform to the IP address
+    #
+    json=$( echo -e "GET /info HTTP/1.1\\n\\n" | socat unix-connect:${docker_sock} STDIO | grep '^[\[{]' )
+    if [ -z "${ADVERTISE_IP}" -a -n "${json}" ]; then
+      echo ${json} | jq . >>${log_dir}/serf.log
+      docker_hostname=$( echo ${json} | jq .Name | sed -e 's/^"//' -e 's/"$//' )
+      answer=$(ping -n -c 1 -w 1 ${docker_hostname} | grep ^PING | cut -d\( -f 2 | cut -d\) -f1)
+      advertise_ip=${answer:-${advertise_ip}}
+
+      # Add the learned docker host IP server to the join list at the same bind port
+      #
+      join_list="${join_list} -join=${answer}:${bind_port}" 
     fi
   fi
 
@@ -60,8 +77,21 @@ else
     base=$(ip addr show dev ${device} | grep "inet " | awk '{print $2}' | cut -d/ -f1)
     mask=$(ip addr show dev ${device} | grep "inet " | awk '{print $2}' | cut -d/ -f2)
 
-    mask_limit=${PORT_SCAN_MASK:-16}
+    # if PORT_SCAN_MASK is subnet, set it to the discovered mask for this host
+    #	
+    [ "${PORT_SCAN_MASK}" == "subnet" ] && PORT_SCAN_MASK=${mask}
+
+    # if PORT_SCAN_MASK is set, use it as the widest mask, otherwise its set to 16
+    #
+    mask_limit=${PORT_SCAN_MASK:-${mask}}
+
+    # If mask_limit is wider than 16 reset the limit
+    #
     [ "${mask_limit}" -lt 16 ] && mask_limit=16
+
+    # if the starting mask is wider than the mask limit
+    # change the starting mask to the mask limit so it at least runs once
+    #
     [ "${mask}" -lt "${mask_limit}" ] && mask=${mask_limit}
 
     while [ -z "${scan_list}" -a ${mask} -ge ${mask_limit} ]; do
