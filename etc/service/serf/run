@@ -2,25 +2,27 @@
 
 # Start Serf
 join_list=""
+bind_port=${BIND_PORT:-7946}
 
 if [ -n "${JOIN_LIST}" ]; then
   for host in $(echo ${JOIN_LIST} | tr ',' ' '); do
-    join_list="${join_list} --join ${host}" 
+    join_list="${join_list} -join ${host}" 
   done
 fi
 
 if [ -n "${PORT_SCAN}" ]; then
   range=$(ip addr show dev eth0 | grep "inet " | awk '{print $2}')
-  for host in $(nmap --open --send-ip --unprivileged -n -p7946 -oG - ${range} | grep "^Host" | grep 7946 | awk '{print $2}'); do
-    join_list="${join_list} --join ${host}" 
+  for host in $(nmap --open --send-ip --unprivileged -n -p${bind_port} -oG - ${range} \
+      | grep "^Host" | grep ${bind_port} | awk '{print $2}' ) ; do
+    join_list="${join_list} -join ${host}" 
   done
 fi
 
 exec /sbin/setuser serf /usr/bin/serf agent \
   ${join_list} \
   -node "${NODE_NAME:-$(hostname -s)}" \
-  -bind "0.0.0.0:${BIND_PORT:-7946}" \
-  -advertise "${HOST_IP:-$(hostname -i | awk '{print $1}')}:${BIND_PORT:-7946}" \
+  -bind "0.0.0.0:${bind_port}" \
+  -advertise "${HOST_IP:-$(hostname -i | awk '{print $1}')}:${bind_port}" \
   -event-handler /etc/service/serf/dispatcher.sh \
   -log-level=debug \
   >> /var/log/serf.log 2>&1
