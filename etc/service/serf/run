@@ -6,10 +6,12 @@ seed_list=""
 if [ -n "${SEED_LIST}" ]; then
   for host in $(echo ${SEED_LIST} | tr ',' ' '); do
     seed_list="${seed_list} --join ${host}" 
+  done
 fi
 
 exec /sbin/setuser serf /usr/bin/serf agent \
   -node "$(hostname)" ${seed_list} \
-  -advertise "$DOCKER_IP:-0.0.0.0}" \
+  -advertise "${HOST_IP:-0.0.0.0}" \
+  -event-handler /etc/service/serf/dispatcher.sh \
   -log-level=debug \
   >> /var/log/serf.log 2>&1

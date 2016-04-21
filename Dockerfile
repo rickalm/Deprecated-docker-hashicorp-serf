@@ -26,7 +26,7 @@ RUN cd /tmp \
 
 # Setup start scripts for services
 #
-ADD bin/serf /etc/service/serf
+ADD etc /etc
 
 # Cleanup 
 
