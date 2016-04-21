@@ -1,0 +1,20 @@
+#! /bin/sh
+
+# Start Serf
+
+if [ "${SEED_NAME}" == "bootstrap" ]; then
+  SERF_NODE_NAME="$(hostname)"
+  SERF_EVENT_HANDLER="peer-member-join.sh"
+
+else
+  SERF_NODE_NAME="bootstrap"
+  SERF_EVENT_HANDLER="bootstrap-member-join.sh"
+
+fi
+
+exec /sbin/setuser serf /usr/bin/serf agent \
+  -node "${SERF_NODE_NAME}" \
+  -advertise "${DCOS_PRIVATE_IP:-0.0.0.0}" \
+  -log-level=debug \
+  -event-handler "/etc/service/serf/${SERF_EVENT_HANDLER}" \
+  >> /var/log/serf.log 2>&1
