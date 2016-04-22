@@ -1,42 +1,37 @@
 #! /bin/bash
 
-appname="serf"
-join_list=""
-scan_list=""
+appname=serf
 log_level=info
-log_dir=/var/log/serf
 
-. ../.bash_functions
+. /etc/.docker_functions
 
-mkdir -p ${log_dir} 2>/dev/null
 chown serf ${log_dir} 2>/dev/null
 
+# by default, we only listen to localhost unless told otherwise
+#
 rpc_port=${SERF_RPC_PORT:-7373}
 rpc_ip=${SERF_RPC_IP:-127.0.0.1}
 
+# by default we bind to all interfaces unless told otherwise
+#
 bind_port=${SERF_BIND_PORT:-7946}
 bind_ip=${SERF_BIND_IP:-0.0.0.0}
 
-# First set advertise_* vars based on Environment or default
+# Figure out the Docker_Host Port NAT if SERF_ADVERTISE_PORT not specified
+# otherwise use the SERF_ADVERTISE_PORT value or the bind_port
 #
 advertise_port=${SERF_ADVERTISE_PORT:-${bind_port}}
-advertise_ip=${SERF_ADVERTISE_IP:-$(hostname -i | awk '{print $1}')}
-
-# Figure out the Docker_Host Port NAT if SERF_ADVERTISE_PORT not specified
-#
 if [ -z "${SERF_ADVERTISE_PORT}" ]; then
-  answer=$(get_docker_port_map ${bind_port})
+  answer=$(get_docker_nat_port ${bind_port})
   advertise_port=${answer:-${advertise_port}}
 fi
 
-# Figure out the Docker_Host IP Address, and then add it to our default join list
-#
-answer=$(get_docker_port_bind_map ${bind_port})
-join_list="${join_list} -join=${answer}:${bind_port}"
-
 # Use Docker_host answer if SERF_ADVERTISE_IP not specified
+# otherwise use the SERF_ADVERTISE_IP value or the host_ip
 #
+advertise_ip=${SERF_ADVERTISE_IP:-$(get_docker_host_ip)}
 if [ -z "${SERF_ADVERTISE_IP}" ]; then
+  answer=$(get_docker_nat_port_bind ${bind_port})
   advertise_ip=${answer:-${advertise_ip}}
 fi
 
@@ -46,7 +41,7 @@ fi
 #
 if [ -n "${PORT_SCAN}" ]; then
   for answer in $( port_scan_network ${bind_port} ${PORT_SCAN_MASK} ); do
-    scan_list="${scan_list} -join=${answer}" 
+    join_list="${join_list} -join=${answer}" 
   done
 fi
 
@@ -55,20 +50,26 @@ fi
 # a non-responding node, it causes issues
 #
 if [ -n "${SERF_JOIN_LIST}" ]; then
-  for host in $(echo ${SERF_JOIN_LIST} | tr ',' ' '); do
-    host_ip=$(echo ${host}: | cut -d: -f1)
-    host_port=$(echo ${host}: | cut -d: -f2)
+  for local joiner in $(echo ${SERF_JOIN_LIST} | tr ',' ' '); do
+    local joiner_ip=$(echo ${joiner}: | cut -d: -f1)
+    local joiner_port=$(echo ${joiner}: | cut -d: -f2)
 
-    for answer in $( port_scan_network ${host_port} 32 ${host_ip}); do
+    for answer in $( port_scan_network ${joiner_port} 32 ${joiner_ip}); do
       join_list="${join_list} -join=${answer}" 
     done
-
   done
+fi
+
+# If the advertise port is not the same as the bind port then assume we are a child
+# and add the parent context to our join list if its running
+#
+if [ "${advertise_port}" != "${bind_port}" ]; then
+  local answer=$( port_scan_network ${bind_port} 32 $(get_docker_host_ip) )
+	[ -n "${answer}" ] && join_list="${join_list} -join=${answer}"
 fi
 
 exec /sbin/setuser serf \
   /usr/bin/serf agent \
-  ${scan_list} \
   ${join_list} \
   -node="${node_name}" \
   -rpc-addr="${rpc_ip}:${rpc_port}" \

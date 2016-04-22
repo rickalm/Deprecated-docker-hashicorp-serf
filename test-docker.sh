@@ -8,6 +8,7 @@ docker rm -f serf-bridge 2>/dev/null
   --name=serf \
   -e "DEBUG=yes" \
   -e "PORT_SCAN=yes" \
+  -v /var/run/docker.sock:/var/run/docker.sock \
   rickalm/hashicorp-serf \
   && docker exec -it serf /bin/bash
 
