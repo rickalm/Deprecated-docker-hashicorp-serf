@@ -1,0 +1,6 @@
+{
+  "leave_on_terminate": true,
+  "tombstone_timeout": "1s",
+  "reconnect_interval": "10s",
+  "reconnect_timeout": "60s"
+}

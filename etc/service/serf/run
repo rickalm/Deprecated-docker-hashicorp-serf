@@ -1,7 +1,6 @@
 #! /bin/bash
 
 appname=serf
-log_level=info
 
 . /etc/.docker_functions
 
@@ -17,23 +16,8 @@ rpc_ip=${SERF_RPC_IP:-127.0.0.1}
 bind_port=${SERF_BIND_PORT:-7946}
 bind_ip=${SERF_BIND_IP:-0.0.0.0}
 
-# Figure out the Docker_Host Port NAT if SERF_ADVERTISE_PORT not specified
-# otherwise use the SERF_ADVERTISE_PORT value or the bind_port
-#
-advertise_port=${SERF_ADVERTISE_PORT:-${bind_port}}
-if [ -z "${SERF_ADVERTISE_PORT}" ]; then
-  answer=$(get_docker_nat_port ${bind_port})
-  advertise_port=${answer:-${advertise_port}}
-fi
-
-# Use Docker_host answer if SERF_ADVERTISE_IP not specified
-# otherwise use the SERF_ADVERTISE_IP value or the host_ip
-#
-advertise_ip=${SERF_ADVERTISE_IP:-$(get_docker_host_ip)}
-if [ -z "${SERF_ADVERTISE_IP}" ]; then
-  answer=$(get_docker_nat_port_bind ${bind_port})
-  advertise_ip=${answer:-${advertise_ip}}
-fi
+advertise_port=${SERF_ADVERTISE_PORT:-$(get_docker_container_nat_port ${bind_port})}
+advertise_ip=${SERF_ADVERTISE_IP:-$(get_docker_container_nat_ip ${bind_port})}
 
 # If PORT_SCAN is enabled, use nmap to find our peers within our network
 # keep expanding the netmask till we find a peer that might want to talk to us
@@ -50,9 +34,9 @@ fi
 # a non-responding node, it causes issues
 #
 if [ -n "${SERF_JOIN_LIST}" ]; then
-  for local joiner in $(echo ${SERF_JOIN_LIST} | tr ',' ' '); do
-    local joiner_ip=$(echo ${joiner}: | cut -d: -f1)
-    local joiner_port=$(echo ${joiner}: | cut -d: -f2)
+  for joiner in $(echo ${SERF_JOIN_LIST} | tr ',' ' '); do
+    joiner_ip=$(echo ${joiner}: | cut -d: -f1)
+    joiner_port=$(echo ${joiner}: | cut -d: -f2)
 
     for answer in $( port_scan_network ${joiner_port} 32 ${joiner_ip}); do
       join_list="${join_list} -join=${answer}" 
@@ -62,22 +46,23 @@ fi
 
 # If the advertise port is not the same as the bind port then assume we are a child
 # and add the parent context to our join list if its running
+# wil re-try this join every 5 seconds for 5 minutes (5*60 = 300)
 #
 if [ "${advertise_port}" != "${bind_port}" ]; then
-  local answer=$( port_scan_network ${bind_port} 32 $(get_docker_host_ip) )
-	[ -n "${answer}" ] && join_list="${join_list} -join=${answer}"
+  join_list="${join_list} -retry-interval=5s -retry-max=60 -retry-join=$(get_docker_host_ip):${bind_port}"
 fi
 
 exec /sbin/setuser serf \
   /usr/bin/serf agent \
   ${join_list} \
-  -node="${node_name}" \
+  -node="$(get_docker_container_name):${random_key}" \
   -rpc-addr="${rpc_ip}:${rpc_port}" \
   -bind="${bind_ip}:${bind_port}" \
   -advertise="${advertise_ip}:${advertise_port}" \
+  -config-dir=/etc/serf \
   -event-handler=/etc/service/serf/dispatcher.sh \
   -snapshot=${log_dir}/snapshot.dat \
   -tags-file=${log_dir}/tags.dat \
-  -log-level=${log_level} \
+  -log-level=${log_level:-info} \
   >>${log_dir}/serf.log 2>&1
 
