@@ -38,5 +38,4 @@ RUN cd /tmp \
 # Setup start scripts for services
 #
 ADD etc /etc
-RUN curl https://github.com/rickalm/docker-tools/raw/master/.docker_functions -so /etc/.docker_functions
-
+RUN curl -L https://github.com/rickalm/docker-tools/raw/master/.docker_functions -so /etc/.docker_functions
