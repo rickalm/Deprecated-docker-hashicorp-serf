@@ -1,10 +1,11 @@
 #! /bin/bash
 
 appname=serf
+runas=serf
 
 . /etc/.docker_functions
 
-chown serf ${log_dir} 2>/dev/null
+chown ${runas} ${log_dir} 2>/dev/null
 
 # by default, we only listen to localhost unless told otherwise
 #
@@ -52,17 +53,17 @@ if [ "${advertise_port}" != "${bind_port}" ]; then
   join_list="${join_list} -retry-interval=5s -retry-max=60 -retry-join=$(get_docker_host_ip):${bind_port}"
 fi
 
-exec /sbin/setuser serf \
+exec /sbin/setuser ${runas} \
   /usr/bin/serf agent \
   ${join_list} \
+  -config-dir=/etc/${appname} \
+  -log-level=${DEBUG:+debug}${DEBUG:-info} \
   -node="$(get_docker_container_name):${random_key}" \
   -rpc-addr="${rpc_ip}:${rpc_port}" \
   -bind="${bind_ip}:${bind_port}" \
   -advertise="${advertise_ip}:${advertise_port}" \
-  -config-dir=/etc/serf \
-  -event-handler=/etc/service/serf/dispatcher.sh \
-  -snapshot=${log_dir}/snapshot.dat \
-  -tags-file=${log_dir}/tags.dat \
-  -log-level=${log_level:-info} \
-  >>${log_dir}/serf.log 2>&1
+  -event-handler=/etc/service/${appname}/dispatcher.sh \
+  >>${log_dir}/${appname}.log 2>&1
 
+  #-snapshot=${log_dir}/snapshot.dat \
+  #-tags-file=${log_dir}/tags.dat \
