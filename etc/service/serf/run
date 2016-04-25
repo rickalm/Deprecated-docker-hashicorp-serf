@@ -53,17 +53,21 @@ if [ "${advertise_port}" != "${bind_port}" ]; then
   join_list="${join_list} -retry-interval=5s -retry-max=60 -retry-join=$(get_docker_host_ip):${bind_port}"
 fi
 
+log_level=${DEBUG:+debug}
+: ${log_level:=info}
+
 exec /sbin/setuser ${runas} \
   /usr/bin/serf agent \
   ${join_list} \
-  -config-dir=/etc/${appname} \
-  -log-level=${DEBUG:+debug}${DEBUG:-info} \
-  -node="$(get_docker_container_name):${random_key}" \
-  -rpc-addr="${rpc_ip}:${rpc_port}" \
-  -bind="${bind_ip}:${bind_port}" \
-  -advertise="${advertise_ip}:${advertise_port}" \
-  -event-handler=/etc/service/${appname}/dispatcher.sh \
+  -config-dir /etc/${appname} \
+  -log-level ${log_level} \
+  -node "$(get_docker_container_name):${random_key}" \
+  -rpc-addr "${rpc_ip}:${rpc_port}" \
+  -bind "${bind_ip}:${bind_port}" \
+  -tag start_time=$(date +%s) \
+  -advertise "${advertise_ip}:${advertise_port}" \
+  -event-handler /etc/service/${appname}/dispatcher.sh \
   >>${log_dir}/${appname}.log 2>&1
 
-  #-snapshot=${log_dir}/snapshot.dat \
-  #-tags-file=${log_dir}/tags.dat \
+  #-snapshot ${log_dir}/snapshot.dat \
+  #-tags-file ${log_dir}/tags.dat \

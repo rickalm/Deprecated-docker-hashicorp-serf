@@ -1,5 +1,4 @@
-docker_ip=$(ip -o addr show docker0 | grep "inet " | sed -e 's/^.*inet //' | cut -d/ -f1)
-
+docker rm -f serf 2>/dev/null
 docker rm -f serf-host 2>/dev/null
 docker rm -f serf-bridge 2>/dev/null
 
