@@ -3,32 +3,46 @@
 appname=serf
 runas=serf
 
+default_rpc_port=${SERF_RPC_PORT:-7373}
+default_bind_port=${SERF_BIND_PORT:-7946}
+
 . /etc/.docker_functions
 
 chown ${runas} ${log_dir} 2>/dev/null
-
-# by default, we only listen to localhost unless told otherwise
-#
-rpc_port=${SERF_RPC_PORT:-7373}
-rpc_ip=${SERF_RPC_IP:-127.0.0.1}
+rpc_auth=${SERF_RPC_AUTH:-${random_key}}
 
 # by default we bind to all interfaces unless told otherwise
 #
-bind_port=${SERF_BIND_PORT:-7946}
 bind_ip=${SERF_BIND_IP:-0.0.0.0}
+bind_port=$(find_free_port)
+
+# by default, we only listen to localhost unless told otherwise
+#
+rpc_ip=${SERF_RPC_IP:-127.0.0.1}
+rpc_port=$(find_free_port)
+
+# If SERF_MASTER is set or docker_mode is bridge then use the well known ports
+#
+if [ -n "${SERF_MASTER}" ] || is_docker_mode_bridge ; then
+  bind_port=${default_bind_port}
+  #rpc_port=${default_rpc_port}
+
+#else
+  #bind_port=$(find_free_port)
+  #rpc_port=$(find_free_port)
+
+fi
 
 advertise_port=${SERF_ADVERTISE_PORT:-$(get_docker_container_nat_port ${bind_port})}
 advertise_ip=${SERF_ADVERTISE_IP:-$(get_docker_container_nat_ip ${bind_port})}
 
-# If PORT_SCAN is enabled, use nmap to find our peers within our network
-# keep expanding the netmask till we find a peer that might want to talk to us
-# netmask cannot be smaller than 16
+# Save the SERF_RPC connection string
 #
-if [ -n "${PORT_SCAN}" ]; then
-  for answer in $( port_scan_network ${bind_port} ${PORT_SCAN_MASK} ); do
-    join_list="${join_list} -join=${answer}" 
-  done
-fi
+filename=/etc/serf/env.sh
+echo export SERF_RPC_ADDR=${rpc_ip}:${rpc_port} >${filename}
+echo export SERF_RPC_AUTH=${rpc_auth} >>${filename}
+chmod +x ${filename}
+eval $(cat ${filename})
 
 # If a JOIN_LIST was specified then add those nodes to the agent run command
 # Use nmap to see if its accepting connections, because if you attempt to join
@@ -49,25 +63,49 @@ fi
 # and add the parent context to our join list if its running
 # wil re-try this join every 5 seconds for 5 minutes (5*60 = 300)
 #
-if [ "${advertise_port}" != "${bind_port}" ]; then
-  join_list="${join_list} -retry-interval=5s -retry-max=60 -retry-join=$(get_docker_host_ip):${bind_port}"
+if [ "${advertise_port}" != "${default_bind_port}" ]; then
+  join_list="${join_list} -retry-interval=5s -retry-max=60 -retry-join=$(get_docker_host_ip):${default_bind_port}"
 fi
 
 log_level=${DEBUG:+debug}
 : ${log_level:=info}
+
+cat <<EOF >/etc/${appname}/params.json
+{
+  "node_name": "$(get_docker_container_name):${random_key}"
+  ,"advertise": "${advertise_ip}:${advertise_port}"
+  ,"bind": "${bind_ip}:${bind_port}"
+  ,"rpc_addr": "${rpc_ip}:${rpc_port}"
+  ,"rpc_auth": "${rpc_auth}"
+}
+EOF
 
 exec /sbin/setuser ${runas} \
   /usr/bin/serf agent \
   ${join_list} \
   -config-dir /etc/${appname} \
   -log-level ${log_level} \
-  -node "$(get_docker_container_name):${random_key}" \
-  -rpc-addr "${rpc_ip}:${rpc_port}" \
-  -bind "${bind_ip}:${bind_port}" \
   -tag start_time=$(date +%s) \
-  -advertise "${advertise_ip}:${advertise_port}" \
   -event-handler /etc/service/${appname}/dispatcher.sh \
-  >>${log_dir}/${appname}.log 2>&1
+  >>${log_dir}/${appname}.log 2>&1 &
 
+child_pid=$|
+
+# If PORT_SCAN is enabled, use nmap to find our peers within our network
+# keep expanding the netmask till we find a peer that might want to talk to us
+# netmask cannot be smaller than 16
+#
+if [ -n "${PORT_SCAN}" ]; then
+  for answer in $( port_scan_network ${default_bind_port} ${PORT_SCAN_MASK} ); do
+    /usr/bin/serf join ${answer}
+    #join_list="${join_list} -join=${answer}" 
+  done
+fi
+
+wait ${child_pid}
+
+  #-advertise "${advertise_ip}:${advertise_port}" \
+  #-node "$(get_docker_container_name):${random_key}" \
+  #-bind "${bind_ip}:${bind_port}" \
   #-snapshot ${log_dir}/snapshot.dat \
   #-tags-file ${log_dir}/tags.dat \
